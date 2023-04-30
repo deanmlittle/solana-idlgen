@@ -1,5 +1,5 @@
 [package]
-name = "idl_to_program"
+name = "solana-idlgen"
 version = "0.1.0"
 edition = "2018"
 
