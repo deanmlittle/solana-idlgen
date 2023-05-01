@@ -6,12 +6,12 @@ pub struct IdlJson {
     pub name: String,
     pub instructions: Vec<IdlJsonInstruction>,
     pub accounts: Vec<IdlJsonNewAccount>,
-    pub metadata: IdlMetadata,
+    pub metadata: Option<IdlMetadata>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IdlMetadata {
-    pub address: String
+    pub address: Option<String>
 }
 
 #[derive(Debug, Serialize , Deserialize)]
@@ -19,6 +19,7 @@ pub struct IdlJsonInstruction {
     pub name: String,
     pub accounts: Vec<IdlJsonAccount>,
     pub args: Vec<IdlJsonArgument>,
+    pub discriminator: Option<Vec<u8>>
 }
 
 #[derive(Debug, Serialize, Deserialize)]

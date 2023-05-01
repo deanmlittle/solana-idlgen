@@ -1,5 +1,4 @@
 use std::str::FromStr;
-use std::path::{Path, PathBuf};
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenTree;
@@ -28,7 +27,14 @@ fn arg_type_to_quote(arg_type: &str) -> proc_macro2::TokenStream {
 pub fn idl_gen(input: TokenStream) -> TokenStream {
     println!("{}", input.to_string());
     let idl: IdlJson = serde_json::from_str(&input.to_string()).unwrap();
-    let program_id_bytes: proc_macro2::TokenStream = Pubkey::from_str(&idl.metadata.address).expect("Invalid program address").to_bytes().iter().map(|b| TokenTree::Literal(proc_macro2::Literal::u8_unsuffixed(*b))).collect::<Punctuated<TokenTree, Comma>>().into_token_stream();
+    let address = idl.metadata
+    .as_ref()
+    .and_then(|m| m.address.as_ref())
+    .unwrap_or_else(|| panic!("Please make sure to define the program address in the metadata: { address } field."));
+    
+    let program_id_bytes: proc_macro2::TokenStream = Pubkey::from_str(&address).expect("Invalid program address").to_bytes().iter().map(|b| TokenTree::Literal(proc_macro2::Literal::u8_unsuffixed(*b))).collect::<Punctuated<TokenTree, Comma>>().into_token_stream();
+    
+    let program_name = Ident::new(&format!("{}Program", idl.name.to_case(Case::Pascal)), proc_macro2::Span::call_site());
 
     let mut ix_structs: Vec<proc_macro2::TokenStream> = vec![];
     let mut ix_impls: Vec<proc_macro2::TokenStream> = vec![];
@@ -48,7 +54,12 @@ pub fn idl_gen(input: TokenStream) -> TokenStream {
         let ix_name = Ident::new(&ix.name.to_case(Case::Pascal), proc_macro2::Span::call_site());
         let ix_name_snake = Ident::new(&ix.name.to_case(Case::Snake), proc_macro2::Span::call_site());
         let ix_name_string = ix.name.clone();
-        let ix_discriminator: proc_macro2::TokenStream = hash(format!("global:{}", ix.name).as_bytes()).to_bytes()[0..8].iter().map(|b| TokenTree::Literal(proc_macro2::Literal::u8_unsuffixed(*b))).collect::<Punctuated<TokenTree, Comma>>().into_token_stream();
+        let ix_discriminator_bytes = match ix.discriminator {
+            Some(d) => d,
+            None => hash(format!("global:{}", ix.name).as_bytes()).to_bytes()[0..8].to_vec()
+        };
+
+        let ix_discriminator = ix_discriminator_bytes.iter().map(|b| TokenTree::Literal(proc_macro2::Literal::u8_unsuffixed(*b)));
 
         // Name of the data struct for our instruction
         let args_struct = Ident::new(&format!("{}Args", ix_name), proc_macro2::Span::call_site());
@@ -100,6 +111,7 @@ pub fn idl_gen(input: TokenStream) -> TokenStream {
                 #(pub #args),*
             }
         });
+        
         ix_impls.push(quote! {
             #[doc = #accounts_string] 
             pub fn #instruction_from_bytes (
@@ -115,7 +127,7 @@ pub fn idl_gen(input: TokenStream) -> TokenStream {
                 accounts: &[&Pubkey; #accounts_count], 
                 args: &#args_struct
             ) -> Instruction {
-                let mut data_bytes: Vec<u8> = vec![#ix_discriminator];
+                let mut data_bytes: Vec<u8> = #ix_discriminator;
                 data_bytes.extend_from_slice(&args.try_to_vec().expect("Unable to serialize data"));
                 Self::#instruction_from_bytes(accounts, &data_bytes)
             }
@@ -162,9 +174,9 @@ pub fn idl_gen(input: TokenStream) -> TokenStream {
 
         #(#ix_structs)*
 
-        pub struct Program {}
+        pub struct #program_name {}
 
-        impl Program {     
+        impl #program_name {     
             #[doc = r"Returns the program ID."]
             pub fn id() -> Pubkey {
                 Pubkey::new_from_array([#program_id_bytes])
