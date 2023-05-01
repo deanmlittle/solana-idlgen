@@ -144,7 +144,7 @@ let args = ExampleArgs {
     name: b"anatoly".to_vec()
 };
 
-// Call the "example" instruction of ExamplProgram
+// Call the "example" instruction of ExampleProgram
 ExampleProgram::example(
     &[
         &signer.pubkey(),
