@@ -11,14 +11,14 @@ use idl_types::*;
 
 fn arg_type_to_quote(arg_type: &str) -> proc_macro2::TokenStream {
     match arg_type {
+        "bytes" => quote! { Vec<u8> },
+        "string" => quote! { String },
+        "publicKey" => quote! { Pubkey },
         "bool" | "u8" | "i8" | "u16" | "i16" | "u32" | "i32" | "f32" | "u64" | "i64" | "f64" | "u128" | "i128" | "u256" | "i256" => {
             let arg_type_ident = Ident::new(arg_type, proc_macro2::Span::call_site());
             quote! { #arg_type_ident }
         },
-        "bytes" => quote! { Vec<u8> },
-        "string" => quote! { String },
-        "publicKey" => quote! { Pubkey },
-        x => panic!("Type not yet implemented: {}", x)
+        x => panic!("Type \"{}\" not implemented yet", x)
     }
 }
 
@@ -58,12 +58,10 @@ pub fn idlgen(input: TokenStream) -> TokenStream {
             None => hash(format!("global:{}", ix.name).as_bytes()).to_bytes()[0..8].to_vec()
         }.iter().map(|b| TokenTree::Literal(proc_macro2::Literal::u8_unsuffixed(*b))).collect::<Punctuated<TokenTree, Comma>>().into_token_stream();
 
-        // Name of the data struct for our instruction
-        let args_struct = Ident::new(&format!("{}Args", ix_name), proc_macro2::Span::call_site());
         // Instruction function names
         let invoke = ix_name_snake.clone();
         let invoke_unsigned = Ident::new(&format!("{}_unsigned", ix_name_snake), proc_macro2::Span::call_site());
-        let instruction_from_data = Ident::new(&format!("{}_ix_from_data", ix_name_snake), proc_macro2::Span::call_site());
+        let instruction_ix = Ident::new(&format!("{}_ix", ix_name_snake), proc_macro2::Span::call_site());
         let instruction_from_bytes = Ident::new(&format!("{}_ix_from_bytes", ix_name_snake), proc_macro2::Span::call_site());
         
         ix.accounts.iter().enumerate().for_each(|(i, account)| {
@@ -92,76 +90,138 @@ pub fn idlgen(input: TokenStream) -> TokenStream {
         let accounts_string = accounts.join("\n");
         let signers_string: String = signers.join("\n");
 
-        ix.args.iter().for_each(|arg| {
-            let arg_name = Ident::new(&arg.name.to_case(Case::Snake), proc_macro2::Span::call_site());
-            let arg_type = arg_type_to_quote(&arg.arg_type);
-            args.push(quote! {
-                #arg_name: #arg_type
+        let arguments: Vec<IdlJsonArgument> = match &ix.args {
+            Some(a) => a.clone(),
+            None => vec![]
+        };
+
+        if arguments.len() > 0 {
+            // Name of the data struct for our instruction
+            let args_struct = Ident::new(&format!("{}Args", ix_name), proc_macro2::Span::call_site());
+
+            arguments.iter().for_each(|arg| {
+                let arg_name = Ident::new(&arg.name.to_case(Case::Snake), proc_macro2::Span::call_site());
+                let arg_type = arg_type_to_quote(&arg.arg_type);
+                args.push(quote! {
+                    #arg_name: #arg_type
+                });
             });
-        });
 
-        ix_structs.push(quote! {
-            #[doc = "The data struct for our instruction: "]
-            #[doc = #ix_name_string]
-            #[derive(Debug, BorshSerialize)]
-            pub struct #args_struct {
-                #(pub #args),*
-            }
-        });
-        
-        ix_impls.push(quote! {
-            #[doc = #accounts_string] 
-            pub fn #instruction_from_bytes (
-                accounts: &[&Pubkey; #accounts_count], 
-                bytes: &[u8]) -> Instruction {
-                let account_meta: Vec<AccountMeta> = vec![
-                    #(#account_meta),*
-                ];
-                Instruction::new_with_bytes(Self::id(), &bytes, account_meta)
-            }
-            #[doc = #accounts_string] 
-            pub fn #instruction_from_data (
-                accounts: &[&Pubkey; #accounts_count], 
-                args: &#args_struct
-            ) -> Instruction {
-                let mut data_bytes: Vec<u8> = vec![#ix_discriminator];
-                data_bytes.extend_from_slice(&args.try_to_vec().expect("Unable to serialize data"));
-                Self::#instruction_from_bytes(accounts, &data_bytes)
-            }
+            ix_structs.push(quote! {
+                #[doc = "The args struct for our instruction: "]
+                #[doc = #ix_name_string]
+                #[derive(Debug, BorshSerialize)]
+                pub struct #args_struct {
+                    #(pub #args),*
+                }
+            });
 
-            #[doc = #accounts_string]
-            #[doc = "\n\n"]
-            #[doc = #signers_string]
-            pub fn #invoke (
-                accounts: &[&Pubkey; #accounts_count],
-                args: &#args_struct,
-                payer: Option<&Pubkey>,
-                signers: &[&Keypair; #signers_count],
-                blockhash: Hash
-            ) -> Transaction {
-                // Create our instruction
-                let ix = Self::#instruction_from_data(accounts, args);
+            ix_impls.push(quote! {
+                #[doc = #accounts_string] 
+                pub fn #instruction_from_bytes (
+                    accounts: &[&Pubkey; #accounts_count], 
+                    bytes: &[u8]
+                ) -> Instruction {
+                    let account_meta: Vec<AccountMeta> = vec![
+                        #(#account_meta),*
+                    ];
+                    Instruction::new_with_bytes(Self::id(), &bytes, account_meta)
+                }
+    
+                #[doc = #accounts_string] 
+                pub fn #instruction_ix (
+                    accounts: &[&Pubkey; #accounts_count], 
+                    args: &#args_struct
+                ) -> Instruction {
+                    let mut data_bytes: Vec<u8> = vec![#ix_discriminator];
+                    data_bytes.extend_from_slice(&args.try_to_vec().expect("Unable to serialize data"));
+                    Self::#instruction_from_bytes(accounts, &data_bytes)
+                }
 
-                // Create a TX building the transaction
-                Transaction::new_signed_with_payer(
-                    &[ix],
-                    payer,
-                    signers,
-                    blockhash
-                )
-            }
+                #[doc = #accounts_string]
+                #[doc = "\n\n"]
+                #[doc = #signers_string]
+                pub fn #invoke (
+                    accounts: &[&Pubkey; #accounts_count],
+                    args: &#args_struct,
+                    payer: Option<&Pubkey>,
+                    signers: &[&Keypair; #signers_count],
+                    blockhash: Hash
+                ) -> Transaction {
+                    // Create our instruction
+                    let ix = Self::#instruction_ix(accounts, args);
 
-            #[doc = #accounts_string]
-            pub fn #invoke_unsigned (
-                accounts: &[&Pubkey; #accounts_count],
-                args: &#args_struct,
-                payer: Option<&Pubkey>,
-            ) -> Transaction {
-                // Create our instruction
-                let ix = Self::#instruction_from_data(accounts, args);
-                Transaction::new_unsigned(Message::new(&[ix], payer))
-            }
-        });
+                    // Create a TX building the transaction
+                    Transaction::new_signed_with_payer(
+                        &[ix],
+                        payer,
+                        signers,
+                        blockhash
+                    )
+                }
+
+                #[doc = #accounts_string]
+                pub fn #invoke_unsigned (
+                    accounts: &[&Pubkey; #accounts_count],
+                    args: &#args_struct,
+                    payer: Option<&Pubkey>,
+                ) -> Transaction {
+                    // Create our instruction
+                    let ix = Self::#instruction_ix(accounts, args);
+                    Transaction::new_unsigned(Message::new(&[ix], payer))
+                }
+            });
+        } else {
+            ix_impls.push(quote! {
+                #[doc = #accounts_string] 
+                pub fn #instruction_from_bytes (
+                    accounts: &[&Pubkey; #accounts_count], 
+                    bytes: &[u8]) -> Instruction {
+                    let account_meta: Vec<AccountMeta> = vec![
+                        #(#account_meta),*
+                    ];
+                    Instruction::new_with_bytes(Self::id(), &bytes, account_meta)
+                }
+                #[doc = #accounts_string] 
+                pub fn #instruction_ix (
+                    accounts: &[&Pubkey; #accounts_count], 
+                ) -> Instruction {
+                    let data_bytes: Vec<u8> = vec![#ix_discriminator];
+                    Self::#instruction_from_bytes(accounts, &data_bytes)
+                }
+
+                #[doc = #accounts_string]
+                #[doc = "\n\n"]
+                #[doc = #signers_string]
+                pub fn #invoke (
+                    accounts: &[&Pubkey; #accounts_count],
+                    payer: Option<&Pubkey>,
+                    signers: &[&Keypair; #signers_count],
+                    blockhash: Hash
+                ) -> Transaction {
+                    // Create our instruction
+                    let ix = Self::#instruction_ix(accounts);
+
+                    // Create a TX building the transaction
+                    Transaction::new_signed_with_payer(
+                        &[ix],
+                        payer,
+                        signers,
+                        blockhash
+                    )
+                }
+
+                #[doc = #accounts_string]
+                pub fn #invoke_unsigned (
+                    accounts: &[&Pubkey; #accounts_count],
+                    payer: Option<&Pubkey>,
+                ) -> Transaction {
+                    // Create our instruction
+                    let ix = Self::#instruction_ix(accounts);
+                    Transaction::new_unsigned(Message::new(&[ix], payer))
+                }
+            });
+        }
     });
 
     let gen = quote! {
