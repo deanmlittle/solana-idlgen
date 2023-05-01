@@ -2,3 +2,4 @@ target
 Cargo.lock
 coverage
 .DS_Store
+tests/target

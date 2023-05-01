@@ -24,15 +24,14 @@ fn arg_type_to_quote(arg_type: &str) -> proc_macro2::TokenStream {
 
 #[proc_macro]
 #[doc = "Creates a program struct with a data struct and statically callable functions for each of its instructions."]
-pub fn idl_gen(input: TokenStream) -> TokenStream {
-    println!("{}", input.to_string());
+pub fn idlgen(input: TokenStream) -> TokenStream {
     let idl: IdlJson = serde_json::from_str(&input.to_string()).unwrap();
     let address = idl.metadata
     .as_ref()
     .and_then(|m| m.address.as_ref())
-    .unwrap_or_else(|| panic!("Please make sure to define the program address in the metadata: { address } field."));
+    .unwrap_or_else(|| panic!("Please make sure to define the program address in the metadata: address field."));
     
-    let program_id_bytes: proc_macro2::TokenStream = Pubkey::from_str(&address).expect("Invalid program address").to_bytes().iter().map(|b| TokenTree::Literal(proc_macro2::Literal::u8_unsuffixed(*b))).collect::<Punctuated<TokenTree, Comma>>().into_token_stream();
+    let program_id_bytes: proc_macro2::TokenStream = Pubkey::from_str(address).expect("Invalid program address").to_bytes().iter().map(|b| TokenTree::Literal(proc_macro2::Literal::u8_unsuffixed(*b))).collect::<Punctuated<TokenTree, Comma>>().into_token_stream();
     
     let program_name = Ident::new(&format!("{}Program", idl.name.to_case(Case::Pascal)), proc_macro2::Span::call_site());
 
@@ -54,12 +53,10 @@ pub fn idl_gen(input: TokenStream) -> TokenStream {
         let ix_name = Ident::new(&ix.name.to_case(Case::Pascal), proc_macro2::Span::call_site());
         let ix_name_snake = Ident::new(&ix.name.to_case(Case::Snake), proc_macro2::Span::call_site());
         let ix_name_string = ix.name.clone();
-        let ix_discriminator_bytes = match ix.discriminator {
-            Some(d) => d,
+        let ix_discriminator = match &ix.discriminator {
+            Some(d) => d.clone(),
             None => hash(format!("global:{}", ix.name).as_bytes()).to_bytes()[0..8].to_vec()
-        };
-
-        let ix_discriminator = ix_discriminator_bytes.iter().map(|b| TokenTree::Literal(proc_macro2::Literal::u8_unsuffixed(*b)));
+        }.iter().map(|b| TokenTree::Literal(proc_macro2::Literal::u8_unsuffixed(*b))).collect::<Punctuated<TokenTree, Comma>>().into_token_stream();
 
         // Name of the data struct for our instruction
         let args_struct = Ident::new(&format!("{}Args", ix_name), proc_macro2::Span::call_site());
@@ -106,7 +103,7 @@ pub fn idl_gen(input: TokenStream) -> TokenStream {
         ix_structs.push(quote! {
             #[doc = "The data struct for our instruction: "]
             #[doc = #ix_name_string]
-            #[derive(BorshSerialize)]
+            #[derive(Debug, BorshSerialize)]
             pub struct #args_struct {
                 #(pub #args),*
             }
@@ -127,7 +124,7 @@ pub fn idl_gen(input: TokenStream) -> TokenStream {
                 accounts: &[&Pubkey; #accounts_count], 
                 args: &#args_struct
             ) -> Instruction {
-                let mut data_bytes: Vec<u8> = #ix_discriminator;
+                let mut data_bytes: Vec<u8> = vec![#ix_discriminator];
                 data_bytes.extend_from_slice(&args.try_to_vec().expect("Unable to serialize data"));
                 Self::#instruction_from_bytes(accounts, &data_bytes)
             }
@@ -140,7 +137,7 @@ pub fn idl_gen(input: TokenStream) -> TokenStream {
                 args: &#args_struct,
                 payer: Option<&Pubkey>,
                 signers: &[&Keypair; #signers_count],
-                recent_blockhash: Hash
+                blockhash: Hash
             ) -> Transaction {
                 // Create our instruction
                 let ix = Self::#instruction_from_data(accounts, args);
@@ -150,7 +147,7 @@ pub fn idl_gen(input: TokenStream) -> TokenStream {
                     &[ix],
                     payer,
                     signers,
-                    recent_blockhash
+                    blockhash
                 )
             }
 
@@ -168,12 +165,12 @@ pub fn idl_gen(input: TokenStream) -> TokenStream {
     });
 
     let gen = quote! {
-        
-        use borsh::{BorshSerialize};
+        use borsh::BorshSerialize;
         use solana_sdk::{signature::{Keypair, Signer}, message::Message, transaction::Transaction, hash::Hash, pubkey::Pubkey, instruction::{Instruction, AccountMeta}};
 
         #(#ix_structs)*
 
+        #[derive(Debug)]
         pub struct #program_name {}
 
         impl #program_name {     
