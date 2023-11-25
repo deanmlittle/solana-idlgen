@@ -7,7 +7,7 @@ authors = ["Dean Little"]
 [lib]
 
 [dependencies]
-borsh = "0.10.3"
+borsh = { version = "1.2.0", features = ["derive"] }
 solana-sdk = "1.15.2"
 solana-client = "1.15.2"
 solana-idlgen = { path = "../" }

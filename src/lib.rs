@@ -134,7 +134,7 @@ pub fn idlgen(input: TokenStream) -> TokenStream {
                     args: &#args_struct
                 ) -> Instruction {
                     let mut data_bytes: Vec<u8> = vec![#ix_discriminator];
-                    data_bytes.extend_from_slice(&args.try_to_vec().expect("Unable to serialize data"));
+                    data_bytes.extend_from_slice(&to_vec(&args).expect("Unable to serialize data"));
                     Self::#instruction_from_bytes(accounts, &data_bytes)
                 }
 
@@ -225,7 +225,7 @@ pub fn idlgen(input: TokenStream) -> TokenStream {
     });
 
     let gen = quote! {
-        use borsh::BorshSerialize;
+        use borsh::{BorshSerialize, to_vec};
         use solana_sdk::{signature::{Keypair, Signer}, message::Message, transaction::Transaction, hash::Hash, pubkey::Pubkey, instruction::{Instruction, AccountMeta}};
 
         #(#ix_structs)*
