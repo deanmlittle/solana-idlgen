@@ -1,7 +1,7 @@
 # Solana IDLGen
 IDLgen generates a code scaffold for calling instructions for custom Solana program in Rust based upon its IDL.
 
-Simply insert a compatible IDL into the `idl_gen!()` macro and you can generate:
+Simply insert a compatible IDL into the `idlgen!()` macro and you can generate:
 
 - A program struct
 - An `impl` containing callable functions to generate valid `Instructions`, as well as signed and unsigned `Transactions`
@@ -54,7 +54,7 @@ idlgen!({
 
 This will generate:
 ```rs
-use borsh::BorshSerialize;
+use borsh::{BorshSerialize, to_vec};
 use solana_sdk::{
     hash::Hash,
     instruction::{AccountMeta, Instruction},
@@ -91,7 +91,7 @@ impl ExampleProgram {
 
     pub fn example_ix_from_data(accounts: &[&Pubkey; 3usize], args: &ExampleArgs) -> Instruction {
         let mut data_bytes: Vec<u8> = vec![189, 174, 40, 25, 180, 44, 109, 58];
-        data_bytes.extend_from_slice(&args.try_to_vec().expect("Unable to serialize data"));
+        data_bytes.extend_from_slice(&to_vec(&args).expect("Unable to serialize data"));
         Self::example_ix_from_bytes(accounts, &data_bytes)
     }
 
@@ -161,5 +161,5 @@ ExampleProgram::example(
 ```
 
 ### Caveats
-- you must add the `solana-sdk` and `borsh` to the Cargo.toml of the package where you consume `idlgen`
+- you must add the `solana-sdk` and `borsh` with `derive` feature enabled to the Cargo.toml of the package where you consume `idlgen`
 - you must populate the optional IDL `metadata -> address` field to get the Program ID
