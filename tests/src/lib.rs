@@ -24,7 +24,7 @@ idlgen!({
         }]
         },
         {
-            "name": "example_two",
+            "name": "exampleTwo",
             "accounts": [{
                 "name": "signer",
                 "isMut": true,
