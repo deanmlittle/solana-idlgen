@@ -55,7 +55,7 @@ pub fn idlgen(input: TokenStream) -> TokenStream {
         let ix_name_string = ix.name.clone();
         let ix_discriminator = match &ix.discriminator {
             Some(d) => d.clone(),
-            None => hash(format!("global:{}", ix.name).as_bytes()).to_bytes()[0..8].to_vec()
+            None => hash(format!("global:{}", ix.name.to_case(Case::Snake)).as_bytes()).to_bytes()[0..8].to_vec()
         }.iter().map(|b| TokenTree::Literal(proc_macro2::Literal::u8_unsuffixed(*b))).collect::<Punctuated<TokenTree, Comma>>().into_token_stream();
 
         // Instruction function names
