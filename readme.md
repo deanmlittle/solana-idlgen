@@ -1,5 +1,5 @@
 # DEPRECATED
-It is recommened to instead use my new tool, [idlgen](https://github.com/deanmlittle/idlgen). It is Anchor 0.29.0 and Anchor 0.30.0 IDL compatible and creates a production-ready crate with feature gates enabling you to do CPI, Introspection and RPC without having to include your program as a dependency.
+It is recommened to instead use my new tool, [idlgen](https://github.com/deanmlittle/idlgen). It is Anchor 0.29.0 and Anchor 0.30.0 IDL compatible and creates a production-ready crate with feature flags enabling you to do CPI, Introspection and RPC without having to include your program as a dependency.
 
 # Solana IDLGen
 IDLgen generates a code scaffold for calling instructions for custom Solana program in Rust based upon its IDL.
